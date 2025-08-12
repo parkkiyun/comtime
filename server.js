@@ -204,7 +204,23 @@ app.get('/iframe', async (req, res) => {
     // Add base tag for relative URLs
     $('head').prepend(`<base href="${baseHref}/">`);
     
-    // Add some basic styling
+    // Fix JavaScript and AJAX calls
+    $('script').each(function() {
+      let scriptContent = $(this).html();
+      if (scriptContent) {
+        // Fix AJAX URLs to use absolute paths
+        scriptContent = scriptContent.replace(/url:\s*['"`]\.\/([^'"`]+)['"`]/g, `url: '${baseHref}/$1'`);
+        scriptContent = scriptContent.replace(/\$\.ajax\(\s*\{\s*url:\s*(['"`])([^'"`]+)\1/g, function(match, quote, url) {
+          if (!url.startsWith('http')) {
+            return match.replace(url, baseHref + '/' + url);
+          }
+          return match;
+        });
+        $(this).html(scriptContent);
+      }
+    });
+    
+    // Add some basic styling and JavaScript fixes
     $('head').append(`
       <style>
         body {
@@ -213,6 +229,49 @@ app.get('/iframe', async (req, res) => {
           overflow: auto;
         }
       </style>
+      <script>
+        // Get proxy base URL
+        const proxyBase = window.location.origin;
+        
+        // Fix any relative AJAX calls
+        if (typeof $ !== 'undefined') {
+          const originalAjax = $.ajax;
+          $.ajax = function(settings) {
+            if (typeof settings === 'string') {
+              // String URL
+              if (!settings.startsWith('http')) {
+                settings = proxyBase + '/api/' + settings.replace(/^\.?\//, '');
+              }
+            } else if (settings && settings.url) {
+              // Object with URL property
+              if (!settings.url.startsWith('http')) {
+                settings.url = proxyBase + '/api/' + settings.url.replace(/^\.?\//, '');
+              }
+            }
+            return originalAjax.call(this, settings);
+          };
+          
+          // Also override $.get, $.post etc
+          const originalGet = $.get;
+          $.get = function(url, data, success, dataType) {
+            if (!url.startsWith('http')) {
+              url = proxyBase + '/api/' + url.replace(/^\.?\//, '');
+            }
+            return originalGet.call(this, url, data, success, dataType);
+          };
+        }
+        
+        // Fix fetch API calls too
+        if (typeof fetch !== 'undefined') {
+          const originalFetch = fetch;
+          window.fetch = function(url, options) {
+            if (typeof url === 'string' && !url.startsWith('http')) {
+              url = proxyBase + '/api/' + url.replace(/^\.?\//, '');
+            }
+            return originalFetch.call(this, url, options);
+          };
+        }
+      </script>
     `);
 
     res.removeHeader('X-Frame-Options');
@@ -242,6 +301,34 @@ app.get('/iframe', async (req, res) => {
       </body>
       </html>
     `);
+  }
+});
+
+// API proxy route for AJAX calls
+app.get('/api/*', async (req, res) => {
+  const apiPath = req.params[0];
+  const targetUrl = `http://comci.net:4082/${apiPath}`;
+  
+  try {
+    const response = await axios.get(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'ko-KR,ko;q=0.8,en-US;q=0.5,en;q=0.3',
+        'Referer': 'http://comci.net:4082/th'
+      },
+      params: req.query,
+      timeout: 10000
+    });
+    
+    const contentType = response.headers['content-type'] || 'application/json';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    res.send(response.data);
+  } catch (error) {
+    console.error('API proxy error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
