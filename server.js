@@ -47,7 +47,7 @@ app.get('/proxy', async (req, res) => {
     
     // Get the current host for proxy URLs
     const currentHost = req.get('host');
-    const protocol = req.secure ? 'https' : 'http';
+    const protocol = req.secure || req.get('x-forwarded-proto') === 'https' || req.get('host').includes('railway.app') ? 'https' : 'http';
     const baseUrl = `${protocol}://${currentHost}`;
     
     // Remove ALL meta tags with target-densitydpi
@@ -287,7 +287,7 @@ app.get('/image', async (req, res) => {
 // Homepage
 app.get('/', (req, res) => {
   const currentHost = req.get('host');
-  const protocol = req.secure ? 'https' : 'http';
+  const protocol = req.secure || req.get('x-forwarded-proto') === 'https' || req.get('host').includes('railway.app') ? 'https' : 'http';
   const baseUrl = `${protocol}://${currentHost}`;
   
   res.send(`
