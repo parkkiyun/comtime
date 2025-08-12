@@ -20,14 +20,27 @@ app.get('/proxy', async (req, res) => {
       timeout: 10000
     });
 
-    const contentType = response.headers['content-type'] || 'text/html; charset=utf-8';
-    let html = response.data.toString('utf-8');
+    const contentType = response.headers['content-type'] || 'text/html; charset=euc-kr';
+    const iconv = require('iconv-lite');
     
-    // Handle Korean encoding
-    if (!html.includes('<!DOCTYPE') && !html.includes('<html')) {
-      const encoding = contentType.includes('euc-kr') ? 'euc-kr' : 'utf-8';
-      const iconv = require('iconv-lite');
-      html = iconv.decode(response.data, encoding);
+    // Try to detect encoding more accurately
+    let html;
+    try {
+      // First try EUC-KR (most Korean sites use this)
+      html = iconv.decode(response.data, 'euc-kr');
+      
+      // If the result contains replacement characters, try UTF-8
+      if (html.includes('�')) {
+        html = iconv.decode(response.data, 'utf-8');
+        
+        // If still has issues, try CP949
+        if (html.includes('�')) {
+          html = iconv.decode(response.data, 'cp949');
+        }
+      }
+    } catch (err) {
+      // Fallback to UTF-8
+      html = response.data.toString('utf-8');
     }
 
     const $ = cheerio.load(html);
@@ -159,14 +172,27 @@ app.get('/iframe', async (req, res) => {
       timeout: 10000
     });
 
-    const contentType = response.headers['content-type'] || 'text/html; charset=utf-8';
-    let html = response.data.toString('utf-8');
+    const contentType = response.headers['content-type'] || 'text/html; charset=euc-kr';
+    const iconv = require('iconv-lite');
     
-    // Handle Korean encoding
-    if (!html.includes('<!DOCTYPE') && !html.includes('<html')) {
-      const encoding = contentType.includes('euc-kr') ? 'euc-kr' : 'utf-8';
-      const iconv = require('iconv-lite');
-      html = iconv.decode(response.data, encoding);
+    // Try to detect encoding more accurately
+    let html;
+    try {
+      // First try EUC-KR (most Korean sites use this)
+      html = iconv.decode(response.data, 'euc-kr');
+      
+      // If the result contains replacement characters, try UTF-8
+      if (html.includes('�')) {
+        html = iconv.decode(response.data, 'utf-8');
+        
+        // If still has issues, try CP949
+        if (html.includes('�')) {
+          html = iconv.decode(response.data, 'cp949');
+        }
+      }
+    } catch (err) {
+      // Fallback to UTF-8
+      html = response.data.toString('utf-8');
     }
 
     const $ = cheerio.load(html);
