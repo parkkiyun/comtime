@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "functions": {
+    "api/proxy.js": {
+      "maxDuration": 30
+    },
+    "api/iframe.js": {
+      "maxDuration": 30
+    },
+    "api/image.js": {
+      "maxDuration": 30
+    },
+    "api/api.js": {
+      "maxDuration": 30
+    }
+  },
+  "routes": [
+    {
+      "src": "/proxy",
+      "dest": "/api/proxy"
+    },
+    {
+      "src": "/api/proxy",
+      "dest": "/api/proxy"
+    },
+    {
+      "src": "/api/iframe",
+      "dest": "/api/iframe"
+    },
+    {
+      "src": "/api/image",
+      "dest": "/api/image"
+    },
+    {
+      "src": "/api/(?!proxy|iframe|image)(.*)",
+      "dest": "/api/api"
+    },
+    {
+      "src": "/",
+      "dest": "/public/index.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/public/$1"
+    }
+  ],
+  "public": true
+}

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>컴시간알리미 프록시 서버</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    .url-box {
+      background: #f8f8f8;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 20px 0;
+      border-left: 4px solid #4CAF50;
+    }
+    code {
+      background: #f4f4f4;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 14px;
+    }
+    .instructions {
+      margin-top: 30px;
+      padding: 20px;
+      background: #e8f5e9;
+      border-radius: 5px;
+    }
+    .instructions h2 {
+      color: #2e7d32;
+      margin-top: 0;
+    }
+    .instructions ol {
+      line-height: 1.8;
+    }
+    .warning {
+      background: #fff3e0;
+      padding: 15px;
+      border-radius: 5px;
+      margin-top: 20px;
+      border-left: 4px solid #ff9800;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🖥️ 컴시간알리미 프록시 서버</h1>
+    
+    <p>이 서버는 컴시간알리미 사이트를 Notion에 임베드할 수 있도록 프록시 기능을 제공합니다.</p>
+    
+    <div class="url-box">
+      <strong>프록시 URL:</strong><br>
+      <code id="proxyUrl"></code>
+    </div>
+    
+    <div class="instructions">
+      <h2>📝 Notion에 임베드하는 방법</h2>
+      <ol>
+        <li>Notion 페이지를 엽니다</li>
+        <li><code>/embed</code>를 입력합니다</li>
+        <li>위의 프록시 URL을 복사하여 붙여넣습니다</li>
+        <li>Enter를 누르면 임베드가 완성됩니다</li>
+      </ol>
+    </div>
+    
+    <div class="warning">
+      <strong>⚠️ 주의사항:</strong>
+      <ul>
+        <li>이 프록시는 개발/테스트 목적으로만 사용하세요</li>
+        <li>상업적 사용은 권장하지 않습니다</li>
+        <li>원본 사이트의 이용약관을 준수해주세요</li>
+      </ul>
+    </div>
+  </div>
+  
+  <script>
+    document.getElementById('proxyUrl').textContent = window.location.origin + '/api/proxy';
+  </script>
+</body>
+</html>
