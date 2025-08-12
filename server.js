@@ -206,18 +206,36 @@ app.get('/iframe', async (req, res) => {
     // Add base tag for relative URLs
     $('head').prepend(`<base href="${baseHref}/">`);
     
+    // Get proxy URL for iframe
+    const currentHost = req.get('host');
+    const protocol = req.secure || req.get('x-forwarded-proto') === 'https' || req.get('host').includes('railway.app') ? 'https' : 'http';
+    const proxyBaseUrl = `${protocol}://${currentHost}`;
+    
     // Fix JavaScript and AJAX calls
     $('script').each(function() {
       let scriptContent = $(this).html();
       if (scriptContent) {
-        // Fix AJAX URLs to use absolute paths
-        scriptContent = scriptContent.replace(/url:\s*['"`]\.\/([^'"`]+)['"`]/g, `url: '${baseHref}/$1'`);
+        // Replace all AJAX URL patterns
+        scriptContent = scriptContent.replace(/url:\s*['"`]\.\/([^'"`]+)['"`]/g, `url: '${proxyBaseUrl}/api/$1'`);
         scriptContent = scriptContent.replace(/\$\.ajax\(\s*\{\s*url:\s*(['"`])([^'"`]+)\1/g, function(match, quote, url) {
           if (!url.startsWith('http')) {
-            return match.replace(url, baseHref + '/' + url);
+            return match.replace(url, `${proxyBaseUrl}/api/${url.replace(/^\.?\//, '')}`);
           }
           return match;
         });
+        
+        // Replace specific comcigan patterns
+        scriptContent = scriptContent.replace(/(['"`])\.\/36179_T\?([^'"`]+)\1/g, `$1${proxyBaseUrl}/api/36179_T?$2$1`);
+        scriptContent = scriptContent.replace(/url:\s*sc3/g, `url: '${proxyBaseUrl}/api/' + sc3.replace('./36179_T?', '36179_T?')`);
+        
+        // Fix the sc_data function specifically
+        if (scriptContent.includes('36179_T?')) {
+          scriptContent = scriptContent.replace(
+            /var sc3='\.\/36179_T\?'\+btoa\(([^)]+)\);/g,
+            `var sc3='${proxyBaseUrl}/api/36179_T?'+btoa($1);`
+          );
+        }
+        
         $(this).html(scriptContent);
       }
     });
@@ -235,59 +253,55 @@ app.get('/iframe', async (req, res) => {
         // Get proxy base URL
         const proxyBase = window.location.origin;
         
-        // Fix any relative AJAX calls
-        if (typeof $ !== 'undefined') {
-          const originalAjax = $.ajax;
-          $.ajax = function(settings) {
-            console.log('AJAX call intercepted:', settings);
+        // Wait for jQuery to load and then override
+        function setupAjaxInterceptor() {
+          if (typeof jQuery !== 'undefined' && typeof $ !== 'undefined') {
+            console.log('Setting up AJAX interceptor...');
             
-            if (typeof settings === 'string') {
-              // String URL
-              if (!settings.startsWith('http')) {
-                settings = proxyBase + '/api/' + settings.replace(/^\.?\//, '');
-                console.log('Redirected to:', settings);
+            // Override jQuery.ajax globally
+            jQuery.ajaxPrefilter(function(options, originalOptions, jqXHR) {
+              if (options.url && !options.url.startsWith('http')) {
+                const originalUrl = options.url;
+                options.url = proxyBase + '/api/' + options.url.replace(/^\.?\//, '');
+                console.log('AJAX intercepted:', originalUrl, '->', options.url);
               }
-            } else if (settings && settings.url) {
-              // Object with URL property
-              if (!settings.url.startsWith('http')) {
+            });
+            
+            // Also override the main $.ajax function
+            const originalAjax = $.ajax;
+            $.ajax = function(settings) {
+              if (typeof settings === 'object' && settings.url && !settings.url.startsWith('http')) {
                 const originalUrl = settings.url;
                 settings.url = proxyBase + '/api/' + settings.url.replace(/^\.?\//, '');
-                console.log('Redirected from', originalUrl, 'to', settings.url);
+                console.log('$.ajax intercepted:', originalUrl, '->', settings.url);
               }
-            }
+              return originalAjax.call(this, settings);
+            };
             
-            return originalAjax.call(this, settings);
-          };
-          
-          // Also override $.get, $.post etc
-          const originalGet = $.get;
-          $.get = function(url, data, success, dataType) {
-            console.log('$.get call intercepted:', url);
-            if (!url.startsWith('http')) {
+            console.log('AJAX interceptor installed successfully');
+          } else {
+            // Retry after a short delay
+            setTimeout(setupAjaxInterceptor, 100);
+          }
+        }
+        
+        // Start trying to setup the interceptor
+        setupAjaxInterceptor();
+        
+        // Also setup immediate overrides in case they're needed
+        if (typeof XMLHttpRequest !== 'undefined') {
+          const originalOpen = XMLHttpRequest.prototype.open;
+          XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+            if (url && !url.startsWith('http') && !url.startsWith(proxyBase)) {
               const originalUrl = url;
               url = proxyBase + '/api/' + url.replace(/^\.?\//, '');
-              console.log('$.get redirected from', originalUrl, 'to', url);
+              console.log('XMLHttpRequest intercepted:', originalUrl, '->', url);
             }
-            return originalGet.call(this, url, data, success, dataType);
+            return originalOpen.call(this, method, url, async, user, password);
           };
         }
         
-        // Fix fetch API calls too
-        if (typeof fetch !== 'undefined') {
-          const originalFetch = fetch;
-          window.fetch = function(url, options) {
-            console.log('Fetch call intercepted:', url);
-            if (typeof url === 'string' && !url.startsWith('http')) {
-              const originalUrl = url;
-              url = proxyBase + '/api/' + url.replace(/^\.?\//, '');
-              console.log('Fetch redirected from', originalUrl, 'to', url);
-            }
-            return originalFetch.call(this, url, options);
-          };
-        }
-        
-        // Debug: Log all network requests
-        console.log('Proxy interceptors installed successfully');
+        console.log('Proxy interceptors setup initiated');
       </script>
     `);
 
