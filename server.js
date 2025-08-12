@@ -5,6 +5,8 @@ const cors = require('cors');
 const app = express();
 
 app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 const TARGET_URL = 'http://xn--s39aqy283b66bj2x.kr';
 
@@ -237,25 +239,34 @@ app.get('/iframe', async (req, res) => {
         if (typeof $ !== 'undefined') {
           const originalAjax = $.ajax;
           $.ajax = function(settings) {
+            console.log('AJAX call intercepted:', settings);
+            
             if (typeof settings === 'string') {
               // String URL
               if (!settings.startsWith('http')) {
                 settings = proxyBase + '/api/' + settings.replace(/^\.?\//, '');
+                console.log('Redirected to:', settings);
               }
             } else if (settings && settings.url) {
               // Object with URL property
               if (!settings.url.startsWith('http')) {
+                const originalUrl = settings.url;
                 settings.url = proxyBase + '/api/' + settings.url.replace(/^\.?\//, '');
+                console.log('Redirected from', originalUrl, 'to', settings.url);
               }
             }
+            
             return originalAjax.call(this, settings);
           };
           
           // Also override $.get, $.post etc
           const originalGet = $.get;
           $.get = function(url, data, success, dataType) {
+            console.log('$.get call intercepted:', url);
             if (!url.startsWith('http')) {
+              const originalUrl = url;
               url = proxyBase + '/api/' + url.replace(/^\.?\//, '');
+              console.log('$.get redirected from', originalUrl, 'to', url);
             }
             return originalGet.call(this, url, data, success, dataType);
           };
@@ -265,12 +276,18 @@ app.get('/iframe', async (req, res) => {
         if (typeof fetch !== 'undefined') {
           const originalFetch = fetch;
           window.fetch = function(url, options) {
+            console.log('Fetch call intercepted:', url);
             if (typeof url === 'string' && !url.startsWith('http')) {
+              const originalUrl = url;
               url = proxyBase + '/api/' + url.replace(/^\.?\//, '');
+              console.log('Fetch redirected from', originalUrl, 'to', url);
             }
             return originalFetch.call(this, url, options);
           };
         }
+        
+        // Debug: Log all network requests
+        console.log('Proxy interceptors installed successfully');
       </script>
     `);
 
@@ -305,30 +322,68 @@ app.get('/iframe', async (req, res) => {
 });
 
 // API proxy route for AJAX calls
-app.get('/api/*', async (req, res) => {
+app.all('/api/*', async (req, res) => {
   const apiPath = req.params[0];
   const targetUrl = `http://comci.net:4082/${apiPath}`;
   
+  console.log(`API Request: ${req.method} ${targetUrl}`, req.query);
+  
   try {
-    const response = await axios.get(targetUrl, {
+    const config = {
+      method: req.method.toLowerCase(),
+      url: targetUrl,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': '*/*',
         'Accept-Language': 'ko-KR,ko;q=0.8,en-US;q=0.5,en;q=0.3',
-        'Referer': 'http://comci.net:4082/th'
+        'Referer': 'http://comci.net:4082/th',
+        'X-Requested-With': 'XMLHttpRequest'
       },
-      params: req.query,
-      timeout: 10000
-    });
+      timeout: 10000,
+      responseType: 'arraybuffer'
+    };
     
+    if (req.method === 'GET') {
+      config.params = req.query;
+    } else {
+      config.data = req.body;
+    }
+    
+    const response = await axios(config);
+    
+    // Handle encoding for Korean content
+    let responseData;
     const contentType = response.headers['content-type'] || 'application/json';
+    
+    if (contentType.includes('text') || contentType.includes('json') || contentType.includes('javascript')) {
+      const iconv = require('iconv-lite');
+      try {
+        responseData = iconv.decode(response.data, 'euc-kr');
+        if (responseData.includes('�')) {
+          responseData = iconv.decode(response.data, 'utf-8');
+        }
+      } catch (err) {
+        responseData = response.data.toString('utf-8');
+      }
+    } else {
+      responseData = response.data;
+    }
+    
     res.setHeader('Content-Type', contentType);
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
     
-    res.send(response.data);
+    console.log(`API Response: ${response.status} - Length: ${responseData.length}`);
+    
+    res.send(responseData);
   } catch (error) {
-    console.error('API proxy error:', error.message);
-    res.status(500).json({ error: error.message });
+    console.error('API proxy error:', error.message, error.response?.status);
+    res.status(error.response?.status || 500).json({ 
+      error: error.message,
+      url: targetUrl,
+      method: req.method
+    });
   }
 });
 
