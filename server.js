@@ -215,27 +215,33 @@ app.get('/iframe', async (req, res) => {
     $('script').each(function() {
       let scriptContent = $(this).html();
       if (scriptContent) {
-        // Replace all AJAX URL patterns
+        console.log(`Processing script content... Original length: ${scriptContent.length}`);
+        
+        // Replace all relative URL patterns with absolute proxy URLs
         scriptContent = scriptContent.replace(/url:\s*['"`]\.\/([^'"`]+)['"`]/g, `url: '${proxyBaseUrl}/api/$1'`);
-        scriptContent = scriptContent.replace(/\$\.ajax\(\s*\{\s*url:\s*(['"`])([^'"`]+)\1/g, function(match, quote, url) {
-          if (!url.startsWith('http')) {
-            return match.replace(url, `${proxyBaseUrl}/api/${url.replace(/^\.?\//, '')}`);
+        
+        // Fix the specific sc_data function that generates the API URL
+        if (scriptContent.includes('36179_T?')) {
+          // Replace the sc3 variable construction
+          scriptContent = scriptContent.replace(
+            /var\s+sc3\s*=\s*['"`]\.\/36179_T\?['"`]\s*\+\s*btoa\s*\(([^)]+)\)\s*;/g,
+            `var sc3='${proxyBaseUrl}/api/36179_T?'+btoa($1);`
+          );
+          
+          // Also replace any direct references to './36179_T?'
+          scriptContent = scriptContent.replace(/['"`]\.\/36179_T\?/g, `'${proxyBaseUrl}/api/36179_T?`);
+        }
+        
+        // Replace $.ajax calls with relative URLs
+        scriptContent = scriptContent.replace(/\$\.ajax\s*\(\s*\{\s*url\s*:\s*(['"`])([^'"`]+)\1/g, function(match, quote, url) {
+          if (url.startsWith('./') || (!url.startsWith('http') && !url.startsWith(proxyBaseUrl))) {
+            const cleanUrl = url.replace(/^\.?\//, '');
+            return match.replace(url, `${proxyBaseUrl}/api/${cleanUrl}`);
           }
           return match;
         });
         
-        // Replace specific comcigan patterns
-        scriptContent = scriptContent.replace(/(['"`])\.\/36179_T\?([^'"`]+)\1/g, `$1${proxyBaseUrl}/api/36179_T?$2$1`);
-        scriptContent = scriptContent.replace(/url:\s*sc3/g, `url: '${proxyBaseUrl}/api/' + sc3.replace('./36179_T?', '36179_T?')`);
-        
-        // Fix the sc_data function specifically
-        if (scriptContent.includes('36179_T?')) {
-          scriptContent = scriptContent.replace(
-            /var sc3='\.\/36179_T\?'\+btoa\(([^)]+)\);/g,
-            `var sc3='${proxyBaseUrl}/api/36179_T?'+btoa($1);`
-          );
-        }
-        
+        console.log(`Script processed. New length: ${scriptContent.length}`);
         $(this).html(scriptContent);
       }
     });
@@ -338,11 +344,24 @@ app.get('/iframe', async (req, res) => {
 // API proxy route for AJAX calls
 app.all('/api/*', async (req, res) => {
   const apiPath = req.params[0];
-  const targetUrl = `http://comci.net:4082/${apiPath}`;
+  
+  // Clean up the API path to avoid double URLs
+  let cleanPath = apiPath;
+  if (cleanPath.includes('http://') || cleanPath.includes('https://')) {
+    // Extract the actual API path from malformed URLs
+    const match = cleanPath.match(/36179_T.*$/);
+    if (match) {
+      cleanPath = match[0];
+    }
+  }
+  
+  const targetUrl = `http://comci.net:4082/${cleanPath}`;
   
   console.log(`\n=== API Request ===`);
   console.log(`Method: ${req.method}`);
-  console.log(`URL: ${targetUrl}`);
+  console.log(`Original apiPath: ${apiPath}`);
+  console.log(`Cleaned path: ${cleanPath}`);
+  console.log(`Target URL: ${targetUrl}`);
   console.log(`Query: ${JSON.stringify(req.query)}`);
   console.log(`Headers: ${JSON.stringify(req.headers)}`);
   
