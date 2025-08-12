@@ -340,63 +340,103 @@ app.all('/api/*', async (req, res) => {
   const apiPath = req.params[0];
   const targetUrl = `http://comci.net:4082/${apiPath}`;
   
-  console.log(`API Request: ${req.method} ${targetUrl}`, req.query);
+  console.log(`\n=== API Request ===`);
+  console.log(`Method: ${req.method}`);
+  console.log(`URL: ${targetUrl}`);
+  console.log(`Query: ${JSON.stringify(req.query)}`);
+  console.log(`Headers: ${JSON.stringify(req.headers)}`);
   
   try {
     const config = {
       method: req.method.toLowerCase(),
       url: targetUrl,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': '*/*',
-        'Accept-Language': 'ko-KR,ko;q=0.8,en-US;q=0.5,en;q=0.3',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
         'Referer': 'http://comci.net:4082/th',
-        'X-Requested-With': 'XMLHttpRequest'
+        'X-Requested-With': 'XMLHttpRequest',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin'
       },
-      timeout: 10000,
-      responseType: 'arraybuffer'
+      timeout: 15000,
+      responseType: 'arraybuffer',
+      validateStatus: function (status) {
+        return status < 500; // Accept any status code less than 500
+      }
     };
+    
+    // Copy important headers from original request
+    if (req.headers.cookie) {
+      config.headers.Cookie = req.headers.cookie;
+    }
     
     if (req.method === 'GET') {
       config.params = req.query;
     } else {
       config.data = req.body;
+      if (req.headers['content-type']) {
+        config.headers['Content-Type'] = req.headers['content-type'];
+      }
     }
+    
+    console.log(`Sending request with config:`, JSON.stringify(config, null, 2));
     
     const response = await axios(config);
     
+    console.log(`\n=== API Response ===`);
+    console.log(`Status: ${response.status}`);
+    console.log(`Headers: ${JSON.stringify(response.headers)}`);
+    console.log(`Data length: ${response.data.length}`);
+    
     // Handle encoding for Korean content
     let responseData;
-    const contentType = response.headers['content-type'] || 'application/json';
+    const contentType = response.headers['content-type'] || 'text/html; charset=euc-kr';
     
-    if (contentType.includes('text') || contentType.includes('json') || contentType.includes('javascript')) {
-      const iconv = require('iconv-lite');
-      try {
-        responseData = iconv.decode(response.data, 'euc-kr');
-        if (responseData.includes('�')) {
-          responseData = iconv.decode(response.data, 'utf-8');
-        }
-      } catch (err) {
-        responseData = response.data.toString('utf-8');
+    // Always try to decode as text first
+    const iconv = require('iconv-lite');
+    try {
+      // Try EUC-KR first (Korean sites)
+      responseData = iconv.decode(response.data, 'euc-kr');
+      
+      // Check if decode was successful
+      if (responseData.includes('�') || responseData.length === 0) {
+        responseData = iconv.decode(response.data, 'utf-8');
       }
-    } else {
-      responseData = response.data;
+      
+      console.log(`Decoded response preview: ${responseData.substring(0, 200)}...`);
+    } catch (err) {
+      console.log('Decode error:', err.message);
+      responseData = response.data.toString('utf-8');
     }
     
+    // Set response headers
     res.setHeader('Content-Type', contentType);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
     
-    console.log(`API Response: ${response.status} - Length: ${responseData.length}`);
+    // Forward cookies if present
+    if (response.headers['set-cookie']) {
+      res.setHeader('Set-Cookie', response.headers['set-cookie']);
+    }
     
-    res.send(responseData);
+    res.status(response.status).send(responseData);
   } catch (error) {
-    console.error('API proxy error:', error.message, error.response?.status);
+    console.error(`\n=== API Error ===`);
+    console.error(`Error: ${error.message}`);
+    console.error(`URL: ${targetUrl}`);
+    console.error(`Status: ${error.response?.status}`);
+    console.error(`Response: ${error.response?.data ? error.response.data.toString().substring(0, 200) : 'No response data'}`);
+    
     res.status(error.response?.status || 500).json({ 
       error: error.message,
       url: targetUrl,
-      method: req.method
+      method: req.method,
+      status: error.response?.status
     });
   }
 });
